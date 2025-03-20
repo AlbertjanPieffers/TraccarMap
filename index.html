@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live GPS Tracker (Traccar WebSocket)</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map {
+            height: 500px;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // 🔹 Traccar WebSocket Configuratie
+        const TRACCAR_SERVER = "wss://server.traccar.org/api/socket"; // WebSocket endpoint
+        const TRACCAR_USERNAME = "reclameappie@gmail.com";
+        const TRACCAR_PASSWORD = "xy3s9e6k";
+        const DEVICE_ID = 7919; // Juiste device ID
+
+        // 🔹 Kaart initialiseren met Leaflet.js (Minimalistische Roadmap)
+        let map = L.map('map', { zoomControl: false }).setView([52.3038209, 6.505169], 15);
+        L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+            attribution: '',
+            subdomains: 'abcd',
+            minZoom: 2,
+            maxZoom: 19
+        }).addTo(map);
+
+        // 🔹 Auto-icoon (in plaats van standaard marker)
+        const carIcon = L.icon({
+            iconUrl: "https://cdn-icons-png.flaticon.com/512/1835/1835537.png", // Auto-icoon
+            iconSize: [40, 40], // Grootte aanpassen
+            iconAnchor: [20, 20] // Centered position
+        });
+
+        let marker = L.marker([52.3038209, 6.505169], { icon: carIcon }).addTo(map);
+
+        // 🔹 Verbinding maken met Traccar WebSocket
+        function connectWebSocket() {
+            console.log("📡 Verbinden met Traccar WebSocket...");
+            const socket = new WebSocket(TRACCAR_SERVER);
+
+            socket.onopen = function() {
+                console.log("✅ Verbonden met Traccar WebSocket!");
+                socket.send(JSON.stringify({ action: "login", email: TRACCAR_USERNAME, password: TRACCAR_PASSWORD }));
+            };
+
+            socket.onmessage = function(event) {
+                const data = JSON.parse(event.data);
+                console.log("📍 Nieuwe locatie ontvangen:", data);
+
+                // Check of het een positie-update is
+                if (data.positions && data.positions.length > 0) {
+                    const position = data.positions.find(pos => pos.deviceId === DEVICE_ID);
+                    if (position) {
+                        updateMap(position.latitude, position.longitude);
+                    }
+                }
+            };
+
+            socket.onerror = function(error) {
+                console.error("❌ WebSocket fout:", error);
+            };
+
+            socket.onclose = function() {
+                console.warn("⚠️ WebSocket verbinding gesloten, opnieuw verbinden in 5 seconden...");
+                setTimeout(connectWebSocket, 5000);
+            };
+        }
+
+        // 🔹 Functie om kaart en marker bij te werken
+        function updateMap(lat, lon) {
+            console.log(`📍 GPS Update: Lat ${lat}, Lon ${lon}`);
+
+            marker.setLatLng([lat, lon]); // Verplaats de marker
+            map.setView([lat, lon]); // Focus de kaart op de nieuwe locatie
+        }
+
+        // 🔹 WebSocket starten
+        connectWebSocket();
+    </script>
+
+</body>
+</html>
