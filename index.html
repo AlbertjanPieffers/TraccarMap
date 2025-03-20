@@ -24,8 +24,10 @@
         const TRACCAR_PASSWORD = "xy3s9e6k";
         const DEVICE_ID = 7919; // Juiste device ID
 
+        let followDevice = true; // 🔹 Standaard apparaat volgen
+
         // 🔹 Kaart initialiseren met Leaflet.js (Minimalistische Roadmap)
-        let map = L.map('map', { zoomControl: false }).setView([52.3038209, 6.505169], 15);
+        let map = L.map('map', { zoomControl: false }).setView([52.3038209, 6.505169], 17); // 🔹 Goed ingezoomd (17)
         L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
             attribution: '',
             subdomains: 'abcd',
@@ -33,11 +35,11 @@
             maxZoom: 19
         }).addTo(map);
 
-        // 🔹 Auto-icoon (in plaats van standaard marker)
+        // 🔹 ECHT auto-icoon (Niet een bougie 😂)
         const carIcon = L.icon({
-            iconUrl: "https://cdn-icons-png.flaticon.com/512/1835/1835537.png", // Auto-icoon
-            iconSize: [40, 40], // Grootte aanpassen
-            iconAnchor: [20, 20] // Centered position
+            iconUrl: "https://i.postimg.cc/qgfN3Jjr/car.png", // 🚗 Auto icoon
+            iconSize: [50, 50], // Groter icoon
+            iconAnchor: [25, 25] // Centered position
         });
 
         let marker = L.marker([52.3038209, 6.505169], { icon: carIcon }).addTo(map);
@@ -75,12 +77,14 @@
             };
         }
 
-        // 🔹 Functie om kaart en marker bij te werken
+        // 🔹 Functie om kaart en marker bij te werken + Apparaat volgen
         function updateMap(lat, lon) {
             console.log(`📍 GPS Update: Lat ${lat}, Lon ${lon}`);
 
             marker.setLatLng([lat, lon]); // Verplaats de marker
-            map.setView([lat, lon]); // Focus de kaart op de nieuwe locatie
+            if (followDevice) {
+                map.setView([lat, lon]); // 📌 Houd de kaart gefocust op het apparaat
+            }
         }
 
         // 🔹 WebSocket starten
