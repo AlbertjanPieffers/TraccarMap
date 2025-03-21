@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live GPS Tracker - Kaart draait mee</title>
+  <title>Live GPS Tracker - Met route & rotatie</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     html, body {
@@ -26,7 +26,6 @@
     }
 
     .leaflet-marker-icon.car-icon {
-      transform: rotate(0deg);
       transition: transform 0.5s ease;
     }
   </style>
@@ -39,21 +38,28 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const DEVICE_ID = 441821; // ✅ Jouw juiste device ID
-  const TOKEN = "RzBFAiEAziGHuGVQcGqQB2K6g3Uf_n1qUndOixKwwVj-3A3Guj4CIEFCGPpCa_V3zof0LzKkornhwL3j3VgeaFK0vtyGPrlKeyJ1IjoyMjExLCJlIjoiMjAzMi0wMS0yN1QyMzowMDowMC4wMDArMDA6MDAifQ"; // ⬅️ Vul hier je API-token in
+  const DEVICE_ID = 441821; // ✅ Juiste device ID
+  const TOKEN = "jouw_api_token"; // ⬅️ Vul hier je geldige Traccar API-token in
   const WS_URL = `wss://server.traccar.org/api/socket?token=${TOKEN}`;
-  const REST_URL = "https://server.traccar.org/api/positions";
+  const REST_URL = "https://server.traccar.org/api/positions`;
 
-  let currentRotation = 0;
+  let routeCoords = []; // Opslag voor routepunten
 
   // Init kaart
   const map = L.map("map", {
     zoomControl: false,
     attributionControl: false
-  }).setView([52.3038209, 6.505169], 20);
+  }).setView([0, 0], 17);
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd"
+  }).addTo(map);
+
+  // Route lijn (polyline)
+  const routeLine = L.polyline([], {
+    color: "#1DB954",
+    weight: 4,
+    opacity: 0.8
   }).addTo(map);
 
   // Auto-icoon
@@ -66,45 +72,53 @@
 
   let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  // 📍 Smooth beweging & draaiing
+  // Smooth beweging + kaart draaien
   function smoothUpdate(lat, lon, course) {
-    const newLatLng = L.latLng(lat, lon);
-    carMarker.setLatLng(newLatLng);
+    const latLng = L.latLng(lat, lon);
 
-    // Draai kaart met de course
+    // Voeg punt toe aan route
+    routeCoords.push(latLng);
+    routeLine.setLatLngs(routeCoords);
+
+    // Update marker
+    carMarker.setLatLng(latLng);
+
+    // Draai kaart
     const mapElement = document.getElementById("map");
-    const rotation = -course; // Kaart draait, dus tegengesteld
+    const rotation = -course; // Negatief: kaart draait, auto blijft omhoog
     mapElement.style.transform = `rotate(${rotation}deg)`;
 
-    // Auto blijft omhoog gericht
+    // Draai marker
     const markerEl = carMarker.getElement();
     if (markerEl) {
       markerEl.style.transform = `rotate(${course}deg)`;
     }
 
-    // Center map (voor kaartrotatie moet de view meedraaien)
-    map.setView(newLatLng);
+    map.setView(latLng);
   }
 
-  // 🌐 Haal laatste positie op bij opstart
+  // REST API call voor initiele positie
   async function fetchInitialPosition() {
-    const res = await fetch(REST_URL, {
-      headers: { Authorization: `Bearer ${TOKEN}` }
-    });
-
-    const data = await res.json();
-    const pos = data.find(p => p.deviceId === DEVICE_ID);
-    if (pos) {
-      smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
+    try {
+      const res = await fetch(REST_URL, {
+        headers: { Authorization: `Bearer ${TOKEN}` }
+      });
+      const data = await res.json();
+      const pos = data.find(p => p.deviceId === DEVICE_ID);
+      if (pos) {
+        smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
+      }
+    } catch (err) {
+      console.error("❌ REST API fout:", err);
     }
   }
 
-  // 🔌 WebSocket voor live updates
+  // WebSocket verbinding
   function connectWebSocket() {
     const socket = new WebSocket(WS_URL);
 
     socket.onopen = () => {
-      console.log("✅ Verbonden met Traccar WebSocket");
+      console.log("✅ Verbonden met Traccar WebSocket via token");
     };
 
     socket.onmessage = (event) => {
@@ -118,21 +132,22 @@
       }
 
       if (pos) {
+        console.log("📡 Live positie ontvangen:", pos);
         smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
       }
     };
 
-    socket.onerror = err => {
+    socket.onerror = (err) => {
       console.error("❌ WebSocket fout:", err);
     };
 
     socket.onclose = () => {
-      console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
+      console.warn("🔁 WebSocket gesloten, reconnect in 5s...");
       setTimeout(connectWebSocket, 5000);
     };
   }
 
-  // 🚀 Start
+  // Start!
   fetchInitialPosition();
   connectWebSocket();
 </script>
