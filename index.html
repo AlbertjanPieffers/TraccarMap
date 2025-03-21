@@ -25,8 +25,31 @@
       transition: transform 0.5s ease;
     }
 
-    .leaflet-marker-icon.car-icon {
+    .leaflet-div-icon {
+      background: transparent;
+      border: none;
+    }
+
+    .leaflet-marker-icon svg {
       transition: transform 0.5s ease;
+    }
+
+    .info-box {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      font-family: sans-serif;
+      font-size: 14px;
+      color: #000;
+      z-index: 1000;
+    }
+    .info-box strong {
+      display: inline-block;
+      width: 80px;
     }
   </style>
 </head>
@@ -34,6 +57,12 @@
 
 <div id="map-container">
   <div id="map"></div>
+  <div class="info-box" id="infoBox">
+    <div><strong>Batterij:</strong> <span id="battery">--%</span></div>
+    <div><strong>Snelheid:</strong> <span id="speed">-- km/u</span></div>
+    <div><strong>Status:</strong> <span id="status">Onbekend</span></div>
+    <div><strong>Laatste:</strong> <span id="timestamp">--</span></div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -61,16 +90,19 @@
     opacity: 0.8
   }).addTo(map);
 
-  const carIcon = L.icon({
-    iconUrl: "https://cdn-icons-png.flaticon.com/512/3429/3429725.png",
-    iconSize: [40, 40],
-    iconAnchor: [20, 20],
-    className: "car-icon"
+  const carIcon = L.divIcon({
+    html: `
+      <svg xmlns="http://www.w3.org/2000/svg" width="30" height="30" viewBox="0 0 24 24" fill="#1DB954">
+        <path d="M5 11h14l1 2v5a1 1 0 0 1-1 1h-1v-1a2 2 0 0 0-4 0v1H9v-1a2 2 0 0 0-4 0v1H4a1 1 0 0 1-1-1v-5l1-2Zm1.5 2a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Zm11 0a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3ZM7 6l10 .01L19 10H5l2-4Z"/>
+      </svg>`,
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    className: "leaflet-div-icon"
   });
 
   let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  function updatePosition(lat, lon, course) {
+  function updatePosition(lat, lon, course, battery, speed, lastUpdate) {
     const latLng = L.latLng(lat, lon);
 
     routeCoords.push(latLng);
@@ -84,10 +116,16 @@
 
     const markerEl = carMarker.getElement();
     if (markerEl) {
-      markerEl.style.transform = `rotate(${course}deg)`;
+      markerEl.querySelector("svg").style.transform = `rotate(${course}deg)`;
     }
 
     map.setView(latLng);
+
+    // ✅ Info box updates
+    document.getElementById("battery").textContent = battery + "%";
+    document.getElementById("speed").textContent = (speed * 3.6).toFixed(1) + " km/u";
+    document.getElementById("timestamp").textContent = new Date(lastUpdate).toLocaleTimeString();
+    document.getElementById("status").textContent = "Online";
   }
 
   async function fetchLatestPosition() {
@@ -113,9 +151,11 @@
 
       if (pos) {
         console.log("📍 Positie gevonden:", pos);
-        updatePosition(pos.latitude, pos.longitude, pos.course || 0);
+        const battery = pos.attributes?.batteryLevel ?? "--";
+        updatePosition(pos.latitude, pos.longitude, pos.course || 0, battery, pos.speed || 0, pos.fixTime);
       } else {
         console.warn("⚠️ Geen positie gevonden voor deviceId:", DEVICE_ID);
+        document.getElementById("status").textContent = "Offline";
       }
 
       console.log("-----------------------------");
