@@ -26,12 +26,14 @@
   const PASSWORD = "xy3s9e6k";
   const DEVICE_ID = 7919;
 
+  // Init kaart
   const map = L.map("map", { zoomControl: false }).setView([52.3038209, 6.505169], 17);
   L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
     attribution: "",
     subdomains: "abcd"
   }).addTo(map);
 
+  // Auto icoon
   const carIcon = L.icon({
     iconUrl: "https://i.postimg.cc/FKFw4jNt/Pngtree-vector-car-icon-4292542-removebg-preview.png",
     iconSize: [40, 40],
@@ -39,11 +41,13 @@
     className: "rotated"
   });
 
+  // Voeg marker toe
   let carMarker = L.marker([52.3038209, 6.505169], {
     icon: carIcon,
     rotationAngle: 0
   }).addTo(map);
 
+  // Smooth move + rotate functie
   function smoothMoveAndRotate(marker, newLat, newLng, newCourse, duration = 1000) {
     const start = marker.getLatLng();
     const end = L.latLng(newLat, newLng);
@@ -51,7 +55,7 @@
 
     const iconEl = marker.getElement();
     if (iconEl) {
-      iconEl.style.transform = rotate(${newCourse}deg);
+      iconEl.style.transform = `rotate(${newCourse}deg)`;
     }
 
     function animate(time) {
@@ -61,12 +65,15 @@
       marker.setLatLng([lat, lng]);
       map.setView([lat, lng]);
 
-      if (progress < 1) requestAnimationFrame(animate);
+      if (progress < 1) {
+        requestAnimationFrame(animate);
+      }
     }
 
     requestAnimationFrame(animate);
   }
 
+  // Maak verbinding met WebSocket
   function connectWebSocket() {
     const socket = new WebSocket(TRACCAR_WS);
 
@@ -94,7 +101,10 @@
       }
     };
 
-    socket.onerror = err => console.error("❌ WebSocket fout:", err);
+    socket.onerror = (err) => {
+      console.error("❌ WebSocket fout:", err);
+    };
+
     socket.onclose = () => {
       console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
       setTimeout(connectWebSocket, 5000);
