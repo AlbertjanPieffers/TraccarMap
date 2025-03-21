@@ -38,15 +38,14 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const DEVICE_ID = 441821; // ✅ Jouw juiste device ID
+  const DEVICE_ID = 441821;
   const REST_URL = "https://server.traccar.org/api/positions";
   const USERNAME = "reclameappie@gmail.com";
   const PASSWORD = "xy3s9e6k";
-  const INTERVAL = 15000; // 15 seconden
+  const INTERVAL = 15000;
 
   let routeCoords = [];
 
-  // Init kaart
   const map = L.map("map", {
     zoomControl: false,
     attributionControl: false
@@ -56,14 +55,12 @@
     subdomains: "abcd"
   }).addTo(map);
 
-  // Route lijn
   const routeLine = L.polyline([], {
     color: "#1DB954",
     weight: 4,
     opacity: 0.8
   }).addTo(map);
 
-  // Auto-icoon
   const carIcon = L.icon({
     iconUrl: "https://cdn-icons-png.flaticon.com/512/3429/3429725.png",
     iconSize: [40, 40],
@@ -73,23 +70,18 @@
 
   let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  // 📍 Positie bijwerken en kaart draaien
   function updatePosition(lat, lon, course) {
     const latLng = L.latLng(lat, lon);
 
-    // Voeg toe aan route
     routeCoords.push(latLng);
     routeLine.setLatLngs(routeCoords);
 
-    // Update marker
     carMarker.setLatLng(latLng);
 
-    // Draai kaart
     const mapEl = document.getElementById("map");
     const rotation = -course;
     mapEl.style.transform = `rotate(${rotation}deg)`;
 
-    // Draai icoon (auto blijft omhoog)
     const markerEl = carMarker.getElement();
     if (markerEl) {
       markerEl.style.transform = `rotate(${course}deg)`;
@@ -98,8 +90,9 @@
     map.setView(latLng);
   }
 
-  // 🌐 REST call
   async function fetchLatestPosition() {
+    console.log("🔄 [Polling] Verversen positie...");
+
     try {
       const response = await fetch(REST_URL, {
         headers: {
@@ -108,18 +101,29 @@
         }
       });
 
-      const data = await response.json();
-      const pos = data.find(p => p.deviceId === DEVICE_ID);
-      if (pos) {
-        console.log("📍 Nieuwe positie:", pos);
-        updatePosition(pos.latitude, pos.longitude, pos.course || 0);
+      if (!response.ok) {
+        console.error(`❌ Fout bij ophalen: status ${response.status}`);
+        return;
       }
+
+      const data = await response.json();
+      console.log("✅ API Response ontvangen:", data);
+
+      const pos = data.find(p => p.deviceId === DEVICE_ID);
+
+      if (pos) {
+        console.log("📍 Positie gevonden:", pos);
+        updatePosition(pos.latitude, pos.longitude, pos.course || 0);
+      } else {
+        console.warn("⚠️ Geen positie gevonden voor deviceId:", DEVICE_ID);
+      }
+
+      console.log("-----------------------------");
     } catch (err) {
       console.error("❌ REST API fout:", err);
     }
   }
 
-  // Start initial fetch en interval
   fetchLatestPosition();
   setInterval(fetchLatestPosition, INTERVAL);
 </script>
