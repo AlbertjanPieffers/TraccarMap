@@ -1,95 +1,108 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Live GPS Tracker (Traccar WebSocket)</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        #map {
-            height: 500px;
-            width: 100%;
-        }
-    </style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live GPS Tracker (met richting)</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    .leaflet-marker-icon.rotated {
+      transition: transform 0.5s ease;
+    }
+  </style>
 </head>
 <body>
 
-    <div id="map"></div>
+<div id="map"></div>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        // 🔹 Traccar WebSocket Configuratie
-        const TRACCAR_SERVER = "wss://server.traccar.org/api/socket?token=RzBFAiASgPK8DzXzkjt9r_N3rULKqYELOM4V8qCOKY1megHo-QIhAKphbHEFbVPcPft7Lc6dOCB21vtSclQNTzOIL_ehRQK_eyJ1IjoyMjExLCJlIjoiMjAzMC0xMi0yNlQyMzowMDowMC4wMDArMDA6MDAifQ"; // WebSocket endpoint
-        const TRACCAR_USERNAME = "reclameappie@gmail.com";
-        const TRACCAR_PASSWORD = "xy3s9e6k";
-        const DEVICE_ID = 441821; // Juiste device ID
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+  const TRACCAR_WS = "wss://server.traccar.org/api/socket";
+  const EMAIL = "reclameappie@gmail.com";
+  const PASSWORD = "xy3s9e6k";
+  const DEVICE_ID = 7919;
 
-        let followDevice = true; // 🔹 Standaard apparaat volgen
+  const map = L.map("map", { zoomControl: false }).setView([52.3038209, 6.505169], 17);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    attribution: "",
+    subdomains: "abcd"
+  }).addTo(map);
 
-        // 🔹 Kaart initialiseren met Leaflet.js (Minimalistische Roadmap)
-        let map = L.map('map', { zoomControl: false }).setView([52.3038209, 6.505169], 20); // 🔹 Goed ingezoomd (17)
-        L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-            attribution: '',
-            subdomains: 'abcd',
-            minZoom: 2,
-            maxZoom: 19
-        }).addTo(map);
+  const carIcon = L.icon({
+    iconUrl: "https://i.postimg.cc/FKFw4jNt/Pngtree-vector-car-icon-4292542-removebg-preview.png",
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+    className: "rotated"
+  });
 
-        // 🔹 ECHT auto-icoon (Niet een bougie 😂)
-        const carIcon = L.icon({
-            iconUrl: "https://i.postimg.cc/FKFw4jNt/Pngtree-vector-car-icon-4292542-removebg-preview.png", // 🚗 Auto icoon
-            iconSize: [50, 50], // Groter icoon
-            iconAnchor: [25, 25] // Centered position
-        });
+  let carMarker = L.marker([52.3038209, 6.505169], {
+    icon: carIcon,
+    rotationAngle: 0
+  }).addTo(map);
 
-        let marker = L.marker([52.3038209, 6.505169], { icon: carIcon }).addTo(map);
+  function smoothMoveAndRotate(marker, newLat, newLng, newCourse, duration = 1000) {
+    const start = marker.getLatLng();
+    const end = L.latLng(newLat, newLng);
+    const startTime = performance.now();
 
-        // 🔹 Verbinding maken met Traccar WebSocket
-        function connectWebSocket() {
-            console.log("📡 Verbinden met Traccar WebSocket...");
-            const socket = new WebSocket(TRACCAR_SERVER);
+    const iconEl = marker.getElement();
+    if (iconEl) {
+      iconEl.style.transform = rotate(${newCourse}deg);
+    }
 
-            socket.onopen = function() {
-                console.log("✅ Verbonden met Traccar WebSocket!");
-                socket.send(JSON.stringify({ action: "login", email: TRACCAR_USERNAME, password: TRACCAR_PASSWORD }));
-            };
+    function animate(time) {
+      const progress = Math.min((time - startTime) / duration, 1);
+      const lat = start.lat + (end.lat - start.lat) * progress;
+      const lng = start.lng + (end.lng - start.lng) * progress;
+      marker.setLatLng([lat, lng]);
+      map.setView([lat, lng]);
 
-            socket.onmessage = function(event) {
-                const data = JSON.parse(event.data);
-                console.log("📍 Nieuwe locatie ontvangen:", data);
+      if (progress < 1) requestAnimationFrame(animate);
+    }
 
-                // Check of het een positie-update is
-                if (data.positions && data.positions.length > 0) {
-                    const position = data.positions.find(pos => pos.deviceId === DEVICE_ID);
-                    if (position) {
-                        updateMap(position.latitude, position.longitude);
-                    }
-                }
-            };
+    requestAnimationFrame(animate);
+  }
 
-            socket.onerror = function(error) {
-                console.error("❌ WebSocket fout:", error);
-            };
+  function connectWebSocket() {
+    const socket = new WebSocket(TRACCAR_WS);
 
-            socket.onclose = function() {
-                console.warn("⚠️ WebSocket verbinding gesloten, opnieuw verbinden in 5 seconden...");
-                setTimeout(connectWebSocket, 5000);
-            };
-        }
+    socket.onopen = () => {
+      console.log("✅ Verbonden met Traccar WebSocket");
+      socket.send(JSON.stringify({
+        action: "login",
+        email: EMAIL,
+        password: PASSWORD
+      }));
+    };
 
-        // 🔹 Functie om kaart en marker bij te werken + Apparaat volgen
-        function updateMap(lat, lon) {
-            console.log(`📍 GPS Update: Lat ${lat}, Lon ${lon}`);
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      let position = null;
 
-            marker.setLatLng([lat, lon]); // Verplaats de marker
-            if (followDevice) {
-                map.setView([lat, lon]); // 📌 Houd de kaart gefocust op het apparaat
-            }
-        }
+      if (data.positions && data.positions.length > 0) {
+        position = data.positions.find(p => p.deviceId === DEVICE_ID);
+      } else if (data.position && data.position.deviceId === DEVICE_ID) {
+        position = data.position;
+      }
 
-        // 🔹 WebSocket starten
-        connectWebSocket();
-    </script>
+      if (position) {
+        smoothMoveAndRotate(carMarker, position.latitude, position.longitude, position.course || 0);
+      }
+    };
+
+    socket.onerror = err => console.error("❌ WebSocket fout:", err);
+    socket.onclose = () => {
+      console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
+      setTimeout(connectWebSocket, 5000);
+    };
+  }
+
+  connectWebSocket();
+</script>
 
 </body>
 </html>
