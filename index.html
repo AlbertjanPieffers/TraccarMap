@@ -3,101 +3,137 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live GPS Tracker (met richting)</title>
+  <title>Live GPS Tracker - Kaart draait mee</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
-    #map {
-      height: 100vh;
-      width: 100%;
+    html, body {
+      margin: 0;
+      padding: 0;
     }
-    .leaflet-marker-icon.rotated {
+
+    #map-container {
+      height: 100vh;
+      width: 100vw;
+      overflow: hidden;
+      position: relative;
+    }
+
+    #map {
+      height: 100%;
+      width: 100%;
+      transform-origin: center center;
+      transition: transform 0.5s ease;
+    }
+
+    .leaflet-marker-icon.car-icon {
+      transform: rotate(0deg);
       transition: transform 0.5s ease;
     }
   </style>
 </head>
 <body>
 
-<div id="map"></div>
+<div id="map-container">
+  <div id="map"></div>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const TRACCAR_WS = "wss://server.traccar.org/api/socket";
-  const EMAIL = "reclameappie@gmail.com";
-  const PASSWORD = "xy3s9e6k";
-  const DEVICE_ID = 441821;
+  const DEVICE_ID = 441821; // ✅ Jouw juiste device ID
+  const TOKEN = "RzBFAiEAziGHuGVQcGqQB2K6g3Uf_n1qUndOixKwwVj-3A3Guj4CIEFCGPpCa_V3zof0LzKkornhwL3j3VgeaFK0vtyGPrlKeyJ1IjoyMjExLCJlIjoiMjAzMi0wMS0yN1QyMzowMDowMC4wMDArMDA6MDAifQ"; // ⬅️ Vul hier je API-token in
+  const WS_URL = `wss://server.traccar.org/api/socket?token=${TOKEN}`;
+  const REST_URL = "https://server.traccar.org/api/positions";
+
+  let currentRotation = 0;
 
   // Init kaart
-  const map = L.map("map", { zoomControl: false }).setView([52.3038209, 6.505169], 20);
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    attribution: "",
+  const map = L.map("map", {
+    zoomControl: false,
+    attributionControl: false
+  }).setView([0, 0], 17);
+
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
     subdomains: "abcd"
   }).addTo(map);
 
-  // Auto icoon
+  // Auto-icoon
   const carIcon = L.icon({
-    iconUrl: "https://i.postimg.cc/FKFw4jNt/Pngtree-vector-car-icon-4292542-removebg-preview.png",
+    iconUrl: "https://cdn-icons-png.flaticon.com/512/3429/3429725.png",
     iconSize: [40, 40],
     iconAnchor: [20, 20],
-    className: "rotated"
+    className: "car-icon"
   });
 
-  // Voeg marker toe
-  let carMarker = L.marker([52.3038209, 6.505169], {
-    icon: carIcon,
-    rotationAngle: 0
-  }).addTo(map);
+  let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  // Smooth move + rotate functie
-  function smoothMoveAndRotate(marker, newLat, newLng, newCourse, duration = 1000) {
-    const start = marker.getLatLng();
-    const end = L.latLng(newLat, newLng);
-    const startTime = performance.now();
+  // 📍 Smooth beweging & draaiing
+  function smoothUpdate(lat, lon, course) {
+    const newLatLng = L.latLng(lat, lon);
+    carMarker.setLatLng(newLatLng);
 
-    const iconEl = marker.getElement();
-    if (iconEl) {
-      iconEl.style.transform = `rotate(${newCourse}deg)`;
+    // Draai kaart met de course
+    const mapElement = document.getElementById("map");
+    const rotation = -course; // Kaart draait, dus tegengesteld
+    mapElement.style.transform = `rotate(${rotation}deg)`;
+
+    // Auto blijft omhoog gericht
+    const markerEl = carMarker.getElement();
+    if (markerEl) {
+      markerEl.style.transform = `rotate(${course}deg)`;
     }
 
-    function animate(time) {
-      const progress = Math.min((time - startTime) / duration, 1);
-      const lat = start.lat + (end.lat - start.lat) * progress;
-      const lng = start.lng + (end.lng - start.lng) * progress;
-      marker.setLatLng([lat, lng]);
-      map.setView([lat, lng]);
-
-      if (progress < 1) {
-        requestAnimationFrame(animate);
-      }
-    }
-
-    requestAnimationFrame(animate);
+    // Center map (voor kaartrotatie moet de view meedraaien)
+    map.setView(newLatLng);
   }
-  //Maak verbinding met de websocket
+
+  // 🌐 Haal laatste positie op bij opstart
+  async function fetchInitialPosition() {
+    const res = await fetch(REST_URL, {
+      headers: { Authorization: `Bearer ${TOKEN}` }
+    });
+
+    const data = await res.json();
+    const pos = data.find(p => p.deviceId === DEVICE_ID);
+    if (pos) {
+      smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
+    }
+  }
+
+  // 🔌 WebSocket voor live updates
   function connectWebSocket() {
-  const token = "RzBFAiEAziGHuGVQcGqQB2K6g3Uf_n1qUndOixKwwVj-3A3Guj4CIEFCGPpCa_V3zof0LzKkornhwL3j3VgeaFK0vtyGPrlKeyJ1IjoyMjExLCJlIjoiMjAzMi0wMS0yN1QyMzowMDowMC4wMDArMDA6MDAifQ"; // <-- plak hier jouw geldige API-token in
-  const socket = new WebSocket(`wss://server.traccar.org/api/socket?token=${token}`);
+    const socket = new WebSocket(WS_URL);
 
-  socket.onopen = () => {
-    console.log("✅ Verbonden met Traccar WebSocket via token");
-    // Geen login meer nodig
-  };
+    socket.onopen = () => {
+      console.log("✅ Verbonden met Traccar WebSocket");
+    };
 
-  socket.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    // ... hier verwerk je de positie
-  };
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      let pos = null;
 
-  socket.onerror = (err) => {
-    console.error("❌ WebSocket fout:", err);
-  };
+      if (data.positions && data.positions.length > 0) {
+        pos = data.positions.find(p => p.deviceId === DEVICE_ID);
+      } else if (data.position && data.position.deviceId === DEVICE_ID) {
+        pos = data.position;
+      }
 
-  socket.onclose = () => {
-    console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
-    setTimeout(connectWebSocket, 5000);
-  };
-}
+      if (pos) {
+        smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
+      }
+    };
 
+    socket.onerror = err => {
+      console.error("❌ WebSocket fout:", err);
+    };
 
+    socket.onclose = () => {
+      console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
+      setTimeout(connectWebSocket, 5000);
+    };
+  }
+
+  // 🚀 Start
+  fetchInitialPosition();
   connectWebSocket();
 </script>
 
