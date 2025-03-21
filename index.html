@@ -72,44 +72,31 @@
 
     requestAnimationFrame(animate);
   }
-
-  // Maak verbinding met WebSocket
+  //Maak verbinding met de websocket
   function connectWebSocket() {
-    const socket = new WebSocket(TRACCAR_WS);
+  const token = "RzBFAiEAziGHuGVQcGqQB2K6g3Uf_n1qUndOixKwwVj-3A3Guj4CIEFCGPpCa_V3zof0LzKkornhwL3j3VgeaFK0vtyGPrlKeyJ1IjoyMjExLCJlIjoiMjAzMi0wMS0yN1QyMzowMDowMC4wMDArMDA6MDAifQ"; // <-- plak hier jouw geldige API-token in
+  const socket = new WebSocket(`wss://server.traccar.org/api/socket?token=${token}`);
 
-    socket.onopen = () => {
-      console.log("✅ Verbonden met Traccar WebSocket");
-      socket.send(JSON.stringify({
-        action: "login",
-        email: EMAIL,
-        password: PASSWORD
-      }));
-    };
+  socket.onopen = () => {
+    console.log("✅ Verbonden met Traccar WebSocket via token");
+    // Geen login meer nodig
+  };
 
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      let position = null;
+  socket.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+    // ... hier verwerk je de positie
+  };
 
-      if (data.positions && data.positions.length > 0) {
-        position = data.positions.find(p => p.deviceId === DEVICE_ID);
-      } else if (data.position && data.position.deviceId === DEVICE_ID) {
-        position = data.position;
-      }
+  socket.onerror = (err) => {
+    console.error("❌ WebSocket fout:", err);
+  };
 
-      if (position) {
-        smoothMoveAndRotate(carMarker, position.latitude, position.longitude, position.course || 0);
-      }
-    };
+  socket.onclose = () => {
+    console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
+    setTimeout(connectWebSocket, 5000);
+  };
+}
 
-    socket.onerror = (err) => {
-      console.error("❌ WebSocket fout:", err);
-    };
-
-    socket.onclose = () => {
-      console.warn("🔁 WebSocket gesloten, opnieuw verbinden in 5s...");
-      setTimeout(connectWebSocket, 5000);
-    };
-  }
 
   connectWebSocket();
 </script>
