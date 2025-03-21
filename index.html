@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live GPS Tracker - Met route & rotatie</title>
+  <title>Live GPS Tracker - Polling (15s)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     html, body {
@@ -38,12 +38,13 @@
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-  const DEVICE_ID = 441821; // ✅ Juiste device ID
-  const TOKEN = "jouw_api_token"; // ⬅️ Vul hier je geldige Traccar API-token in
-  const WS_URL = `wss://server.traccar.org/api/socket?token=${TOKEN}`;
+  const DEVICE_ID = 441821; // ✅ Jouw juiste device ID
   const REST_URL = "https://server.traccar.org/api/positions";
+  const USERNAME = "reclameappie@gmail.com";
+  const PASSWORD = "xy3s9e6k";
+  const INTERVAL = 15000; // 15 seconden
 
-  let routeCoords = []; // Opslag voor routepunten
+  let routeCoords = [];
 
   // Init kaart
   const map = L.map("map", {
@@ -55,7 +56,7 @@
     subdomains: "abcd"
   }).addTo(map);
 
-  // Route lijn (polyline)
+  // Route lijn
   const routeLine = L.polyline([], {
     color: "#1DB954",
     weight: 4,
@@ -72,11 +73,11 @@
 
   let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  // Smooth beweging + kaart draaien
-  function smoothUpdate(lat, lon, course) {
+  // 📍 Positie bijwerken en kaart draaien
+  function updatePosition(lat, lon, course) {
     const latLng = L.latLng(lat, lon);
 
-    // Voeg punt toe aan route
+    // Voeg toe aan route
     routeCoords.push(latLng);
     routeLine.setLatLngs(routeCoords);
 
@@ -84,11 +85,11 @@
     carMarker.setLatLng(latLng);
 
     // Draai kaart
-    const mapElement = document.getElementById("map");
-    const rotation = -course; // Negatief: kaart draait, auto blijft omhoog
-    mapElement.style.transform = `rotate(${rotation}deg)`;
+    const mapEl = document.getElementById("map");
+    const rotation = -course;
+    mapEl.style.transform = `rotate(${rotation}deg)`;
 
-    // Draai marker
+    // Draai icoon (auto blijft omhoog)
     const markerEl = carMarker.getElement();
     if (markerEl) {
       markerEl.style.transform = `rotate(${course}deg)`;
@@ -97,59 +98,30 @@
     map.setView(latLng);
   }
 
-  // REST API call voor initiele positie
-  async function fetchInitialPosition() {
+  // 🌐 REST call
+  async function fetchLatestPosition() {
     try {
-      const res = await fetch(REST_URL, {
-        headers: { Authorization: `Bearer ${TOKEN}` }
+      const response = await fetch(REST_URL, {
+        headers: {
+          "Authorization": "Basic " + btoa(`${USERNAME}:${PASSWORD}`),
+          "Accept": "application/json"
+        }
       });
-      const data = await res.json();
+
+      const data = await response.json();
       const pos = data.find(p => p.deviceId === DEVICE_ID);
       if (pos) {
-        smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
+        console.log("📍 Nieuwe positie:", pos);
+        updatePosition(pos.latitude, pos.longitude, pos.course || 0);
       }
     } catch (err) {
       console.error("❌ REST API fout:", err);
     }
   }
 
-  // WebSocket verbinding
-  function connectWebSocket() {
-    const socket = new WebSocket(WS_URL);
-
-    socket.onopen = () => {
-      console.log("✅ Verbonden met Traccar WebSocket via token");
-    };
-
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      let pos = null;
-
-      if (data.positions && data.positions.length > 0) {
-        pos = data.positions.find(p => p.deviceId === DEVICE_ID);
-      } else if (data.position && data.position.deviceId === DEVICE_ID) {
-        pos = data.position;
-      }
-
-      if (pos) {
-        console.log("📡 Live positie ontvangen:", pos);
-        smoothUpdate(pos.latitude, pos.longitude, pos.course || 0);
-      }
-    };
-
-    socket.onerror = (err) => {
-      console.error("❌ WebSocket fout:", err);
-    };
-
-    socket.onclose = () => {
-      console.warn("🔁 WebSocket gesloten, reconnect in 5s...");
-      setTimeout(connectWebSocket, 5000);
-    };
-  }
-
-  // Start!
-  fetchInitialPosition();
-  connectWebSocket();
+  // Start initial fetch en interval
+  fetchLatestPosition();
+  setInterval(fetchLatestPosition, INTERVAL);
 </script>
 
 </body>
