@@ -23,8 +23,8 @@
     }
 
     #map {
-      height: 220vmin;
-      width: 200vmin;
+      height: 500vmin;
+      width: 500vmin;
       border-radius: 0%;
       overflow: hidden;
       transform-origin: center center;
@@ -85,7 +85,7 @@
   const map = L.map("map", {
     zoomControl: false,
     attributionControl: false
-  }).setView([52.3038209, 6.505169], 30); // ← dat is perfect
+  }).setView([52.3038209, 6.505169], 50); // ← dat is perfect
 ;
 
   L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
