@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Live GPS Tracker - Polling (15s)</title>
+  <title>Live GPS Tracker - WebSocket (Robuust)</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <style>
     html, body {
@@ -11,7 +11,6 @@
       padding: 0;
       background: transparent;
     }
-
     #map-container {
       height: 100vh;
       width: 100vw;
@@ -21,7 +20,6 @@
       justify-content: center;
       align-items: center;
     }
-
     #map {
       height: 100vmin;
       width: 100vmin;
@@ -31,32 +29,28 @@
       transition: transform 0.5s ease;
       box-shadow: 0 0 20px rgba(0, 0, 0, 0.4);
     }
-
     .leaflet-div-icon {
       background: transparent;
       border: none;
     }
-
     .leaflet-marker-icon svg {
       transition: transform 0.5s ease;
     }
-
     .info-box {
-  position: absolute;
-  top: 15px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.9);
-  padding: 10px 15px;
-  border-radius: 10px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
-  font-family: sans-serif;
-  font-size: 36px;
-  color: #000;
-  z-index: 1000;
-  text-align: center;
-}
-
+      position: absolute;
+      top: 250px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 10px 15px;
+      border-radius: 10px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      font-family: sans-serif;
+      font-size: 36px;
+      color: #000;
+      z-index: 1000;
+      text-align: center;
+    }
     .info-box strong {
       display: inline-block;
       width: 280px;
@@ -78,111 +72,97 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
   const DEVICE_ID = 7919;
-  const REST_URL = "https://server.traccar.org/api/positions";
-  const USERNAME = "reclameappie@gmail.com";
-  const PASSWORD = "xy3s9e6k";
-  const INTERVAL = 2000;
+  const TOKEN = "RzBFAiB2Rx79n7oEINC4IP372JKBWtnadNRktXMc-hT6zfT6lgIhAIVoU-cO45NrSwiIb47oJ2hcb0TTbVx7XHtFKWxwUqqqeyJ1IjoyMjExLCJlIjoiMjAzMy0wMS0yOFQyMzowMDowMC4wMDArMDA6MDAifQ";
+  const WS_URL = `wss://server.traccar.org/api/socket?token=${TOKEN}`;
 
   let routeCoords = [];
+  let map, socket, reconnectTimeout;
 
-  const map = L.map("map", {
-    zoomControl: false,
-    attributionControl: false
-  }).setView([52.3038209, 6.505169], 30); // ← dat is perfect
-;
+  function initMap() {
+    map = L.map("map", {
+      zoomControl: false,
+      attributionControl: false
+    }).setView([52.3038209, 6.505169], 30);
 
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
-    subdomains: "abcd"
-  }).addTo(map);
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      subdomains: "abcd"
+    }).addTo(map);
 
-  const routeLine = L.polyline([], {
-    color: "#FF0000",
-    weight: 4,
-    opacity: 0.8
-  }).addTo(map);
+    const routeLine = L.polyline([], {
+      color: "#FF0000",
+      weight: 4,
+      opacity: 0.8
+    }).addTo(map);
 
-  const carIcon = L.divIcon({
-  html: `
-    <?xml version="1.0" encoding="iso-8859-1"?>
-<!-- Uploaded to: SVG Repo, www.svgrepo.com, Generator: SVG Repo Mixer Tools -->
-<svg fill="	#FF0000" height="80px" width="80px" version="1.1" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" 
-	 viewBox="0 0 330 330" xml:space="preserve">
-<path id="XMLID_224_" d="M325.606,229.393l-150.004-150C172.79,76.58,168.974,75,164.996,75c-3.979,0-7.794,1.581-10.607,4.394
-	l-149.996,150c-5.858,5.858-5.858,15.355,0,21.213c5.857,5.857,15.355,5.858,21.213,0l139.39-139.393l139.397,139.393
-	C307.322,253.536,311.161,255,315,255c3.839,0,7.678-1.464,10.607-4.394C331.464,244.748,331.464,235.251,325.606,229.393z"/>
-</svg>`,
-  iconSize: [80, 80],
-  iconAnchor: [40, 40],
-  className: "leaflet-div-icon"
-});
+    const carIcon = L.divIcon({
+      html: `<svg fill="#FF0000" height="80px" width="80px" viewBox="0 0 330 330" xmlns="http://www.w3.org/2000/svg"><path d="M325.606,229.393l-150.004-150C172.79,76.58,168.974,75,164.996,75c-3.979,0-7.794,1.581-10.607,4.394l-149.996,150c-5.858,5.858-5.858,15.355,0,21.213c5.857,5.857,15.355,5.858,21.213,0l139.39-139.393l139.397,139.393C307.322,253.536,311.161,255,315,255c3.839,0,7.678-1.464,10.607-4.394C331.464,244.748,331.464,235.251,325.606,229.393z"/></svg>`,
+      iconSize: [80, 80],
+      iconAnchor: [40, 40],
+      className: "leaflet-div-icon"
+    });
 
+    const carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
 
-  let carMarker = L.marker([0, 0], { icon: carIcon }).addTo(map);
+    function updatePosition(lat, lon, course, battery, speed, lastUpdate) {
+      const latLng = L.latLng(lat, lon);
+      routeCoords.push(latLng);
+      routeLine.setLatLngs(routeCoords);
+      carMarker.setLatLng(latLng);
 
-  function updatePosition(lat, lon, course, battery, speed, lastUpdate) {
-    const latLng = L.latLng(lat, lon);
+      const mapEl = document.getElementById("map");
+      const rotation = -course;
+      mapEl.style.transform = `rotate(${rotation}deg)`;
 
-    routeCoords.push(latLng);
-    routeLine.setLatLngs(routeCoords);
+      const markerEl = carMarker.getElement();
+      if (markerEl) {
+        markerEl.querySelector("svg").style.transform = `rotate(${course}deg)`;
+      }
 
-    carMarker.setLatLng(latLng);
+      map.setView(latLng);
 
-    const mapEl = document.getElementById("map");
-    const rotation = -course;
-    mapEl.style.transform = `rotate(${rotation}deg)`;
-
-    const markerEl = carMarker.getElement();
-    if (markerEl) {
-      markerEl.querySelector("svg").style.transform = `rotate(${course}deg)`;
+      document.getElementById("battery").textContent = battery + "%";
+      document.getElementById("speed").textContent = (speed * 3.6).toFixed(1) + " km/u";
+      document.getElementById("timestamp").textContent = new Date(lastUpdate).toLocaleTimeString();
+      document.getElementById("status").textContent = "Online";
     }
 
-    map.setView(latLng);
+    function connectSocket() {
+      socket = new WebSocket(WS_URL);
 
-    document.getElementById("battery").textContent = battery + "%";
-    document.getElementById("speed").textContent = (speed * 3.6).toFixed(1) + " km/u";
-    document.getElementById("timestamp").textContent = new Date(lastUpdate).toLocaleTimeString();
-    document.getElementById("status").textContent = "Online";
-  }
+      socket.onopen = () => {
+        console.log("✅ Verbonden met Traccar WebSocket");
+        document.getElementById("status").textContent = "Live verbonden";
+      };
 
-  async function fetchLatestPosition() {
-    console.log("🔄 [Polling] Verversen positie...");
-
-    try {
-      const response = await fetch(REST_URL, {
-        headers: {
-          "Authorization": "Basic " + btoa(`${USERNAME}:${PASSWORD}`),
-          "Accept": "application/json"
+      socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (Array.isArray(data.positions)) {
+          const pos = data.positions.find(p => p.deviceId === DEVICE_ID);
+          if (pos) {
+            console.log("📡 Live positie ontvangen:", pos);
+            const battery = pos.attributes?.batteryLevel ?? "--";
+            updatePosition(pos.latitude, pos.longitude, pos.course || 0, battery, pos.speed || 0, pos.fixTime);
+          }
         }
-      });
+      };
 
-      if (!response.ok) {
-        console.error(`❌ Fout bij ophalen: status ${response.status}`);
-        return;
-      }
+      socket.onerror = (e) => {
+        console.error("❌ WebSocket fout:", e);
+        document.getElementById("status").textContent = "Fout in verbinding";
+      };
 
-      const data = await response.json();
-      console.log("✅ API Response ontvangen:", data);
-
-      const pos = data.find(p => p.deviceId === DEVICE_ID);
-
-      if (pos) {
-        console.log("📍 Positie gevonden:", pos);
-        const battery = pos.attributes?.batteryLevel ?? "--";
-        updatePosition(pos.latitude, pos.longitude, pos.course || 0, battery, pos.speed || 0, pos.fixTime);
-      } else {
-        console.warn("⚠️ Geen positie gevonden voor deviceId:", DEVICE_ID);
-        document.getElementById("status").textContent = "Offline";
-      }
-
-      console.log("-----------------------------");
-    } catch (err) {
-      console.error("❌ REST API fout:", err);
+      socket.onclose = () => {
+        console.warn("⚠️ WebSocket gesloten. Probeer opnieuw in 5 seconden...");
+        document.getElementById("status").textContent = "Verbinding verbroken";
+        clearTimeout(reconnectTimeout);
+        reconnectTimeout = setTimeout(connectSocket, 5000);
+      };
     }
+
+    connectSocket();
   }
 
-  fetchLatestPosition();
-  setInterval(fetchLatestPosition, INTERVAL);
+  initMap();
 </script>
-
 </body>
 </html>
